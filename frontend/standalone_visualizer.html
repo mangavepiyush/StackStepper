@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MySQL 9.7 Kernel Query Visualizer — Interactive Standalone Viewer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0b0f19;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --input-bg: #131d31;
+      --accent-cyan: #06b6d4;
+      --accent-indigo: #6366f1;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-purple: #a855f7;
+      --text-primary: #f9fafb;
+      --text-secondary: #9ca3af;
+      --text-muted: #6b7280;
+      --glow-cyan: 0 0 20px rgba(6, 182, 212, 0.35);
+      --glow-indigo: 0 0 20px rgba(99, 102, 241, 0.35);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      font-family: 'Outfit', sans-serif;
+      padding: 1rem;
+      min-height: 100vh;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .logo-title { font-size: 1.3rem; font-weight: 800; color: var(--accent-cyan); display: flex; align-items: center; gap: 0.6rem; }
+    .status-badge {
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--accent-emerald);
+      padding: 0.4rem 0.8rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+    .control-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .selector-row { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+    label { font-weight: 700; font-size: 0.85rem; color: var(--accent-indigo); }
+    select, button {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: var(--input-bg);
+      color: var(--text-primary);
+      outline: none;
+      cursor: pointer;
+    }
+    select { flex: 1; min-width: 300px; font-family: 'Fira Code', monospace; color: var(--accent-cyan); }
+    button.btn-primary {
+      background: linear-gradient(135deg, var(--accent-indigo), var(--accent-cyan));
+      border: none;
+      color: #fff;
+      font-weight: 700;
+      box-shadow: var(--glow-indigo);
+    }
+    button.btn-primary:hover { opacity: 0.9; }
+    .playback-bar {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: var(--input-bg);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+    }
+    .slider-track { flex: 1; height: 8px; background: #1f2937; border-radius: 4px; position: relative; cursor: pointer; }
+    .slider-fill { height: 100%; background: linear-gradient(90deg, var(--accent-cyan), var(--accent-indigo)); border-radius: 4px; width: 0%; transition: width 0.1s linear; }
+    .metrics-bar { display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.82rem; }
+    .metric-item { display: flex; flex-direction: column; }
+    .m-lbl { color: var(--text-muted); font-size: 0.7rem; font-weight: 700; }
+    .m-val { font-family: 'Fira Code', monospace; font-weight: 700; color: var(--accent-cyan); font-size: 0.95rem; }
+    
+    .grid-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
+    @media(max-width: 1024px) { .grid-layout { grid-template-columns: 1fr; } }
+
+    .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; padding: 1.25rem; }
+    .sub-tabs { display: flex; gap: 0.4rem; overflow-x: auto; margin-bottom: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem; }
+    .sub-tab-btn { background: transparent; border: none; padding: 0.4rem 0.8rem; color: var(--text-secondary); font-size: 0.82rem; font-weight: 600; border-radius: 6px; }
+    .sub-tab-btn.active { background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); border: 1px solid rgba(6, 182, 212, 0.3); }
+
+    .pipe-container { display: flex; flex-direction: column; gap: 0.6rem; max-height: 600px; overflow-y: auto; }
+    .pipe-card {
+      background: var(--input-bg);
+      border: 1.5px solid var(--card-border);
+      border-radius: 10px;
+      padding: 0.8rem 1rem;
+      transition: all 0.25s ease;
+    }
+    .pipe-card.active {
+      border-color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.08);
+      box-shadow: var(--glow-cyan);
+      transform: translateX(4px);
+    }
+    .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; }
+    .card-num { font-family: 'Fira Code', monospace; font-size: 0.75rem; color: var(--text-muted); }
+    .card-title { font-weight: 700; font-size: 0.95rem; }
+    .card-time { font-family: 'Fira Code', monospace; font-size: 0.75rem; color: var(--accent-cyan); }
+    .card-symbol { font-family: 'Fira Code', monospace; font-size: 0.78rem; color: var(--accent-indigo); margin-bottom: 0.2rem; }
+    .card-desc { font-size: 0.8rem; color: var(--text-secondary); }
+
+    .row-card {
+      background: var(--input-bg);
+      border-left: 3px solid var(--card-border);
+      padding: 0.6rem 0.8rem;
+      border-radius: 6px;
+      margin-bottom: 0.5rem;
+      font-size: 0.82rem;
+    }
+    .row-card.fetching { border-left-color: var(--accent-amber); }
+    .row-card.selected { border-left-color: var(--accent-emerald); background: rgba(16, 185, 129, 0.05); }
+    .row-card.discarded { border-left-color: var(--accent-rose); opacity: 0.6; }
+    .res-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; font-family: 'Fira Code', monospace; font-size: 0.82rem; }
+    .res-table th, .res-table td { padding: 0.5rem 0.75rem; border: 1px solid var(--card-border); text-align: left; }
+    .res-table th { background: var(--input-bg); color: var(--accent-cyan); }
+
+    .wal-card { background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 8px; padding: 0.8rem; margin-bottom: 0.6rem; font-size: 0.82rem; }
+    .wal-badge { background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); font-family: 'Fira Code', monospace; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 700; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="logo-title">⚡ MySQL 9.7 Kernel Visualizer (Interactive Standalone Mode)</div>
+    <div class="status-badge">🟢 Engine Telemetry Connected</div>
+  </div>
+
+  <div class="control-panel">
+    <div class="selector-row">
+      <label for="querySelect">SELECT QUERY TRACE:</label>
+      <select id="querySelect"></select>
+      <button id="btnLoadQuery" class="btn-primary">🔍 Inspect Selected Query</button>
+    </div>
+
+    <div class="playback-bar">
+      <button id="btnPlay">▶ Play</button>
+      <button id="btnStep">⏭ Step</button>
+      <button id="btnReset">⏮ Reset</button>
+      <div class="slider-track" id="sliderTrack"><div class="slider-fill" id="sliderFill"></div></div>
+      <span style="font-family: 'Fira Code', monospace; font-size: 0.8rem;" id="stepInfo">Step 0 / 0</span>
+    </div>
+
+    <div class="metrics-bar">
+      <div class="metric-item"><span class="m-lbl">THREAD ID</span><span class="m-val" id="mThread">-</span></div>
+      <div class="metric-item"><span class="m-lbl">QUERY ID</span><span class="m-val" id="mQuery">-</span></div>
+      <div class="metric-item"><span class="m-lbl">EXAMINED ROWS</span><span class="m-val" id="mExamined">0</span></div>
+      <div class="metric-item"><span class="m-lbl">SELECTED ROWS</span><span class="m-val" id="mSelected">0</span></div>
+      <div class="metric-item"><span class="m-lbl">DISCARDED ROWS</span><span class="m-val" id="mDiscarded">0</span></div>
+      <div class="metric-item"><span class="m-lbl">TOTAL LATENCY</span><span class="m-val" id="mLatency">0 µs</span></div>
+    </div>
+  </div>
+
+  <div class="grid-layout">
+    <div class="card">
+      <div class="sub-tabs">
+        <button class="sub-tab-btn active" onclick="showTab('unified')">Unified Pipeline</button>
+        <button class="sub-tab-btn" onclick="showTab('redo')">Redo Log / WAL</button>
+        <button class="sub-tab-btn" onclick="showTab('durability')">Commit Durability</button>
+        <button class="sub-tab-btn" onclick="showTab('btree')">Physical B+ Tree</button>
+        <button class="sub-tab-btn" onclick="showTab('bp')">Buffer Pool</button>
+        <button class="sub-tab-btn" onclick="showTab('locks')">Locks</button>
+        <button class="sub-tab-btn" onclick="showTab('mvcc')">MVCC Read View</button>
+      </div>
+
+      <div id="tabUnified" class="pipe-container"></div>
+      <div id="tabRedo" class="pipe-container" style="display:none;"></div>
+      <div id="tabDurability" class="pipe-container" style="display:none;"></div>
+      <div id="tabBTree" class="pipe-container" style="display:none;"></div>
+      <div id="tabBp" class="pipe-container" style="display:none;"></div>
+      <div id="tabLocks" class="pipe-container" style="display:none;"></div>
+      <div id="tabMvcc" class="pipe-container" style="display:none;"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--accent-cyan);">Physical Row Inspector & Result Set</h3>
+      <div id="rowContainer"></div>
+      <h4 style="font-size: 0.9rem; margin: 1rem 0 0.5rem 0; color: var(--accent-emerald);">Returned SQL Result Set</h4>
+      <div id="resultContainer"></div>
+    </div>
+  </div>
+
+  <script>
+    let allQueries = [];
+    let currentQuery = null;
+    let eventBuffer = [];
+    let stepIdx = 0;
+    let isPlaying = false;
+    let timer = null;
+
+    const STAGES = [
+      { type: 'COMMAND_START', num: '01', title: 'Client Inbound', symbol: 'dispatch_command()', desc: 'Receives query command over MySQL TCP socket' },
+      { type: 'LEX_PARSE', num: '02', title: 'Lexer & Parser', symbol: 'parse_sql()', desc: 'Validates SQL syntax & tokenizes query' },
+      { type: 'AST_CREATED', num: '03', title: 'AST Construction', symbol: 'THD::parse_tree', desc: 'Builds Abstract Syntax Tree' },
+      { type: 'AST_DISPATCH', num: '04', title: 'AST Command Dispatcher', symbol: 'mysql_execute_command()', desc: 'Dispatches statement to handler' },
+      { type: 'DML_EXECUTE', num: '05', title: 'DML Abstract Layer', symbol: 'Sql_cmd_dml::execute()', desc: 'Initiates Data Manipulation workflow' },
+      { type: 'TABLE_OPEN', num: '06', title: 'Table Open & MDL Lock', symbol: 'open_tables_for_query()', desc: 'Acquires Metadata Lock & opens table buffers' },
+      { type: 'OPTIMIZE_STAGE', num: '07', title: 'Query Optimizer', symbol: 'JOIN::optimize()', desc: 'Computes cost-based access path' },
+      { type: 'INDEX_SELECT', num: '08', title: 'Index Initialization', symbol: 'handler::ha_index_init()', desc: 'Initializes target storage index' },
+      { type: 'TABLE_SCAN_START', num: '09', title: 'Access Path Init', symbol: 'Iterator::Init()', desc: 'Prepares physical iterator for scanning' },
+      { type: 'ROW_FETCH', num: '10', title: 'Physical Storage Fetch', symbol: 'handler::ha_rnd_next()', desc: 'Reads physical record buffer from InnoDB' },
+      { type: 'FILTER_RESULT', num: '11', title: 'FilterIterator Predicate', symbol: 'FilterIterator::Read()', desc: 'Evaluates WHERE clause predicate' },
+      { type: 'ROW_SELECTED', num: '12', title: 'Logical Selection', symbol: 'QueryTracer::mark_selected()', desc: 'Row satisfies predicate; passed to pipeline' },
+      { type: 'ROW_DISCARDED', num: '13', title: 'Predicate Rejection', symbol: 'QueryTracer::mark_discarded()', desc: 'Row fails predicate evaluation; discarded' },
+      { type: 'PROJECTION', num: '14', title: 'Projection & Formatting', symbol: 'Item::val_str()', desc: 'Formats projected column fields' },
+      { type: 'RESULT_SENT', num: '15', title: 'Protocol Transmission', symbol: 'Query_result_send::send_data()', desc: 'Transmits formatted row packet to client' },
+      { type: 'TABLE_SCAN_END', num: '16', title: 'Scan Completion', symbol: 'Iterator::DoRead() EOF', desc: 'Storage engine scan reaches EOF' },
+      { type: 'COMMAND_END', num: '17', title: 'Command Finish', symbol: 'dispatch_command() finish', desc: 'Frees structures & releases MDL locks' }
+    ];
+
+    async function init() {
+      try {
+        const res = await fetch('/api/reconstructed/queries');
+        if (res.ok) {
+          allQueries = await res.json();
+        }
+      } catch (e) {
+        console.warn('API fetch failed, falling back to embedded queries.');
+      }
+
+      if (!allQueries || allQueries.length === 0) {
+        // Fallback fetch embedded
+        try {
+          const res = await fetch('embedded_queries.json');
+          if (res.ok) allQueries = await res.json();
+        } catch (e) {}
+      }
+
+      // Filter DML/SELECT queries
+      const userQueries = (allQueries || []).filter(q => q.sql && /^(SELECT|INSERT|UPDATE|DELETE|START)/i.test(q.sql.trim()));
+      const selectElem = document.getElementById('querySelect');
+      selectElem.innerHTML = '';
+
+      userQueries.forEach((q, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.textContent = `Q#${q.queryId} [Thread ${q.threadId}]: ${q.sql}`;
+        selectElem.appendChild(opt);
+      });
+
+      if (userQueries.length > 0) {
+        selectElem.selectedIndex = userQueries.length - 1;
+        loadQuery(userQueries[userQueries.length - 1]);
+      }
+
+      document.getElementById('btnLoadQuery').onclick = () => {
+        const idx = parseInt(selectElem.value, 10);
+        if (userQueries[idx]) loadQuery(userQueries[idx]);
+      };
+
+      document.getElementById('btnPlay').onclick = togglePlay;
+      document.getElementById('btnStep').onclick = stepNext;
+      document.getElementById('btnReset').onclick = resetPlayback;
+    }
+
+    function loadQuery(q) {
+      currentQuery = q;
+      eventBuffer = q.events || [];
+      stepIdx = 0;
+      resetPlayback();
+
+      document.getElementById('mThread').textContent = q.threadId;
+      document.getElementById('mQuery').textContent = q.queryId;
+      document.getElementById('mExamined').textContent = q.rowsExamined || 0;
+      document.getElementById('mLatency').textContent = `${q.durationUs || 0} µs`;
+
+      renderUnifiedPipeline();
+      renderRedoTab(q);
+      renderDurabilityTab(q);
+      renderBTreeTab(q);
+      renderBpTab(q);
+      renderLocksTab(q);
+      renderMvccTab(q);
+      renderResultSet(q);
+    }
+
+    function renderUnifiedPipeline() {
+      const container = document.getElementById('tabUnified');
+      container.innerHTML = '';
+      STAGES.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'pipe-card';
+        card.id = `node-${s.type}`;
+        card.innerHTML = `
+          <div class="card-top">
+            <span class="card-num">${s.num}</span>
+            <span class="card-title">${s.title}</span>
+            <span class="card-time" id="time-${s.type}">-</span>
+          </div>
+          <div class="card-symbol">${s.symbol}</div>
+          <div class="card-desc">${s.desc}</div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function togglePlay() {
+      if (isPlaying) {
+        isPlaying = false;
+        if (timer) { clearInterval(timer); timer = null; }
+        document.getElementById('btnPlay').textContent = '▶ Play';
+      } else {
+        if (stepIdx >= eventBuffer.length) stepIdx = 0;
+        isPlaying = true;
+        document.getElementById('btnPlay').textContent = '⏸ Pause';
+        timer = setInterval(() => {
+          if (stepIdx >= eventBuffer.length) {
+            isPlaying = false;
+            clearInterval(timer);
+            timer = null;
+            document.getElementById('btnPlay').textContent = '▶ Replay';
+            return;
+          }
+          renderStep(stepIdx);
+          stepIdx++;
+        }, 300);
+      }
+    }
+
+    function stepNext() {
+      if (stepIdx < eventBuffer.length) {
+        renderStep(stepIdx);
+        stepIdx++;
+      }
+    }
+
+    function resetPlayback() {
+      isPlaying = false;
+      if (timer) { clearInterval(timer); timer = null; }
+      document.getElementById('btnPlay').textContent = '▶ Play';
+      stepIdx = 0;
+      document.getElementById('sliderFill').style.width = '0%';
+      document.getElementById('stepInfo').textContent = `Step 0 / ${eventBuffer.length}`;
+      document.querySelectorAll('.pipe-card').forEach(c => c.classList.remove('active'));
+      document.getElementById('rowContainer').innerHTML = '<div class="wal-card">Ready to play execution steps.</div>';
+    }
+
+    function renderStep(idx) {
+      const evt = eventBuffer[idx];
+      if (!evt) return;
+
+      document.querySelectorAll('.pipe-card').forEach(c => c.classList.remove('active'));
+      const activeNode = document.getElementById(`node-${evt.event_type}`);
+      if (activeNode) {
+        activeNode.classList.add('active');
+        const timeElem = document.getElementById(`time-${evt.event_type}`);
+        if (timeElem) timeElem.textContent = `+${evt.elapsed_us || 0} µs`;
+        activeNode.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      const pct = Math.round(((idx + 1) / Math.max(1, eventBuffer.length)) * 100);
+      document.getElementById('sliderFill').style.width = `${pct}%`;
+      document.getElementById('stepInfo').textContent = `Step ${idx + 1} / ${eventBuffer.length} (${evt.event_type})`;
+
+      if (evt.event_type === 'ROW_FETCH') {
+        const details = evt.details || {};
+        const card = document.createElement('div');
+        card.className = 'row-card fetching';
+        card.innerHTML = `<strong>Fetched Row #${details.row_number || 1}</strong> | ${JSON.stringify(details.values || {})}`;
+        const container = document.getElementById('rowContainer');
+        if (container.querySelector('.wal-card')) container.innerHTML = '';
+        container.appendChild(card);
+      }
+    }
+
+    function renderRedoTab(q) {
+      const container = document.getElementById('tabRedo');
+      const redo = q.executionInfo?.redo;
+      const dirtyPages = q.executionInfo?.dirtyPages;
+      if (!redo && !dirtyPages) {
+        container.innerHTML = '<div class="wal-card">No Redo Log / WAL events for this query.</div>';
+        return;
+      }
+      let html = '';
+      (redo?.records || []).forEach(r => {
+        html += `<div class="wal-card">📜 <strong>REDO RECORD GENERATED</strong> <span class="wal-badge">LSN ${r.startLsn} ➔ ${r.endLsn}</span> (${r.bytes} bytes)</div>`;
+      });
+      (redo?.logWrites || []).forEach(w => {
+        html += `<div class="wal-card">✍️ <strong>REDO LOG WRITE</strong> <span class="wal-badge">write_lsn = ${w.writeLsn}</span> (${w.bytes} bytes)</div>`;
+      });
+      (redo?.flushes || []).forEach(f => {
+        html += `<div class="wal-card">💾 <strong>REDO LOG FLUSH (FSYNC)</strong> <span class="wal-badge">flush_lsn = ${f.flushLsn}</span></div>`;
+      });
+      (dirtyPages?.marked || []).forEach(dp => {
+        html += `<div class="wal-card">🔴 <strong>PAGE DIRTIED IN RAM</strong> <span class="wal-badge">Page #${dp.pageNo} (Space ${dp.spaceId})</span></div>`;
+      });
+      container.innerHTML = html;
+    }
+
+    function renderDurabilityTab(q) {
+      const container = document.getElementById('tabDurability');
+      const flushes = q.executionInfo?.redo?.flushes || [];
+      container.innerHTML = `
+        <div class="wal-card">
+          <h3 style="color: var(--accent-emerald); margin-bottom: 0.5rem;">🛡️ COMMIT DURABILITY BOUNDARY</h3>
+          <p><strong>Runtime Setting:</strong> <code>innodb_flush_log_at_trx_commit = 1</code></p>
+          <p style="margin-top: 0.5rem;">Upon transaction commit, InnoDB flushes the Redo Log buffer to disk up to the commit LSN using physical fsync.</p>
+          <p style="margin-top: 0.5rem;"><strong>Observed Flushed LSN:</strong> ${flushes.length > 0 ? `<span class="wal-badge">${flushes[flushes.length - 1].flushLsn}</span>` : 'N/A'}</p>
+        </div>
+      `;
+    }
+
+    function renderBTreeTab(q) {
+      const container = document.getElementById('tabBTree');
+      const visits = q.executionInfo?.physicalIndexAccess || [];
+      if (visits.length === 0) { container.innerHTML = '<div class="wal-card">No physical B+ tree page visits recorded.</div>'; return; }
+      let html = '';
+      visits.forEach(v => {
+        html += `<div class="wal-card">${v.isLeaf ? '🍃 Leaf Page' : '🌳 Index Page'} <strong>Page #${v.pageNo}</strong> (Space ID: ${v.spaceId}, Index: ${v.indexName})</div>`;
+      });
+      container.innerHTML = html;
+    }
+
+    function renderBpTab(q) {
+      const container = document.getElementById('tabBp');
+      const accesses = q.executionInfo?.pageAccesses || [];
+      if (accesses.length === 0) { container.innerHTML = '<div class="wal-card">No buffer pool accesses recorded.</div>'; return; }
+      let html = '';
+      accesses.forEach(a => {
+        html += `<div class="wal-card">${a.isHit ? '✅ BUFFER POOL HIT' : '❌ BUFFER POOL MISS'} Space ID: ${a.spaceId}, Page #${a.pageNo}</div>`;
+      });
+      container.innerHTML = html;
+    }
+
+    function renderLocksTab(q) {
+      const container = document.getElementById('tabLocks');
+      const locks = q.executionInfo?.lockEvents || [];
+      if (locks.length === 0) { container.innerHTML = '<div class="wal-card">No row or table locks acquired.</div>'; return; }
+      let html = '';
+      locks.forEach(l => {
+        html += `<div class="wal-card">${l.granted ? '🔒 LOCK GRANTED' : '⏳ LOCK WAIT'} Mode: ${l.lockMode} ${l.lockType} on Page #${l.pageNo}</div>`;
+      });
+      container.innerHTML = html;
+    }
+
+    function renderMvccTab(q) {
+      const container = document.getElementById('tabMvcc');
+      const mvcc = q.executionInfo?.mvcc;
+      if (!mvcc) { container.innerHTML = '<div class="wal-card">No MVCC read view active for this statement.</div>'; return; }
+      let html = '';
+      (mvcc.readViews || []).forEach(rv => {
+        html += `<div class="wal-card">👁️ <strong>READ VIEW CREATED</strong> Trx Creator #${rv.creatorTrxId} (Low Limit #${rv.lowLimitId}, Up Limit #${rv.upLimitId})</div>`;
+      });
+      container.innerHTML = html;
+    }
+
+    function renderResultSet(q) {
+      const container = document.getElementById('resultContainer');
+      if (!q.resultRows || q.resultRows.length === 0) {
+        container.innerHTML = `<div class="wal-card">Query executed. Affected Rows: ${q.rowsAffected !== null ? q.rowsAffected : 0}</div>`;
+        return;
+      }
+      let html = '<table class="res-table"><thead><tr>';
+      (q.resultRows[0].columns || []).forEach(col => html += `<th>${col}</th>`);
+      html += '</tr></thead><tbody>';
+      q.resultRows.forEach(r => {
+        html += '<tr>';
+        (r.values || []).forEach(val => html += `<td>${val}</td>`);
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      container.innerHTML = html;
+    }
+
+    function showTab(name) {
+      ['tabUnified', 'tabRedo', 'tabDurability', 'tabBTree', 'tabBp', 'tabLocks', 'tabMvcc'].forEach(t => {
+        document.getElementById(t).style.display = 'none';
+      });
+      document.querySelectorAll('.sub-tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).style.display = 'flex';
+      event.target.classList.add('active');
+    }
+
+    window.onload = init;
+  </script>
+</body>
+</html>

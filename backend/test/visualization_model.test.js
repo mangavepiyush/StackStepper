@@ -1,0 +1,206 @@
+const assert = require('assert');
+const { buildVisualizationModel } = require('../../../frontend/sql/visualization_model');
+
+console.log("==========================================================");
+console.log("    RUNNING VISUALIZATION MODEL UNIT TEST SUITE           ");
+console.log("==========================================================");
+
+function runModelTests() {
+  let passed = 0;
+  let total = 0;
+
+  function test(name, fn) {
+    total++;
+    try {
+      fn();
+      console.log(`[PASS] Test ${total}: ${name}`);
+      passed++;
+    } catch (err) {
+      console.error(`[FAIL] Test ${total}: ${name}`);
+      console.error(err.stack || err.message);
+    }
+  }
+
+  // ---------------------------------------------------------
+  // TEST 1: SELECT * FROM student WHERE id < 6 (Exact telemetry-observed rows only)
+  // ---------------------------------------------------------
+  test("TEST 1: SELECT * FROM student WHERE id < 6 (Only telemetry-observed rows)", () => {
+    const trace = {
+      sql: "SELECT * FROM student WHERE id < 6;",
+      commandType: "SELECT",
+      tables: ["student"],
+      accessPaths: ["Index Range Scan"],
+      events: [
+        { seq: 1, eventType: "COMMAND_START", details: { query: "SELECT * FROM student WHERE id < 6;" } },
+        { seq: 2, eventType: "INDEX_SELECT", details: { index_name: "PRIMARY", table: "student" } },
+        { seq: 3, eventType: "TABLE_SCAN_START", details: { table: "student", iterator: "IndexRangeScanIterator", access_path: "Index Range Scan" } },
+        { seq: 4, eventType: "ROW_FETCH", activity_scope: "USER_DATA", table: "student", details: { table: "student", row_number: 1, primary_key_value: "1", values: { id: "1", name: "FULL_REBUILD_VERIFIED" } } },
+        { seq: 5, eventType: "FILTER_RESULT", activity_scope: "USER_DATA", details: { row_number: 1, condition: "(student.student.id < 6)", passed: true } },
+        { seq: 6, eventType: "ROW_SELECTED", activity_scope: "USER_DATA", details: { row_number: 1 } },
+        { seq: 7, eventType: "RESULT_SENT", activity_scope: "USER_DATA", details: { result_row_seq: 1, values: ["1", "FULL_REBUILD_VERIFIED"] } },
+        { seq: 8, eventType: "ROW_FETCH", activity_scope: "USER_DATA", table: "student", details: { table: "student", row_number: 2, primary_key_value: "2", values: { id: "2", name: "CLEAN_ARCH_TEST" } } },
+        { seq: 9, eventType: "FILTER_RESULT", activity_scope: "USER_DATA", details: { row_number: 2, condition: "(student.student.id < 6)", passed: true } },
+        { seq: 10, eventType: "ROW_SELECTED", activity_scope: "USER_DATA", details: { row_number: 2 } },
+        { seq: 11, eventType: "RESULT_SENT", activity_scope: "USER_DATA", details: { result_row_seq: 2, values: ["2", "CLEAN_ARCH_TEST"] } },
+        { seq: 12, eventType: "ROW_FETCH", activity_scope: "USER_DATA", table: "student", details: { table: "student", row_number: 3, primary_key_value: "3", values: { id: "3", name: "Charlie" } } },
+        { seq: 13, eventType: "FILTER_RESULT", activity_scope: "USER_DATA", details: { row_number: 3, condition: "(student.student.id < 6)", passed: true } },
+        { seq: 14, eventType: "ROW_SELECTED", activity_scope: "USER_DATA", details: { row_number: 3 } },
+        { seq: 15, eventType: "RESULT_SENT", activity_scope: "USER_DATA", details: { result_row_seq: 3, values: ["3", "Charlie"] } },
+        { seq: 16, eventType: "TABLE_SCAN_END", details: { table: "student", rows_examined: 3, rows_selected: 3, rows_discarded: 0 } },
+        { seq: 17, eventType: "COMMAND_END", details: { error: 0 } }
+      ]
+    };
+
+    const model = buildVisualizationModel(trace);
+    assert.ok(model);
+    assert.strictEqual(model.access.executedMethod, "PRIMARY_INDEX_RANGE_SCAN");
+    assert.strictEqual(model.access.displayMethod, "Index Range Scan");
+    assert.strictEqual(model.access.indexName, "PRIMARY");
+
+    const finalStep = model.steps[model.steps.length - 1];
+    const observedKeys = Object.keys(finalStep.rowStates);
+
+    // Assert EXACTLY 3 rows observed from telemetry
+    assert.strictEqual(observedKeys.length, 3);
+    assert.deepStrictEqual(observedKeys, ['1', '2', '3']);
+
+    // Assert row values match telemetry
+    assert.strictEqual(finalStep.rowStates['1'].name, "FULL_REBUILD_VERIFIED");
+    assert.strictEqual(finalStep.rowStates['2'].name, "CLEAN_ARCH_TEST");
+    assert.strictEqual(finalStep.rowStates['3'].name, "Charlie");
+
+    // Assert NO fabricated Alice/Bob/David/Emma rows
+    assert.strictEqual(finalStep.rowStates['4'], undefined);
+    assert.strictEqual(finalStep.rowStates['5'], undefined);
+
+    // Assert counters match telemetry directly
+    assert.strictEqual(finalStep.counters.examined, 3);
+    assert.strictEqual(finalStep.counters.selected, 3);
+    assert.strictEqual(finalStep.counters.discarded, 0);
+  });
+
+  // ---------------------------------------------------------
+  // TEST 2: REGRESSION TEST — Zero manufactured rows
+  // ---------------------------------------------------------
+  test("TEST 2: REGRESSION TEST — Zero manufactured rows (Arbitrary IDs 10 & 50)", () => {
+    const trace = {
+      sql: "SELECT * FROM student WHERE id IN (10, 50);",
+      commandType: "SELECT",
+      tables: ["student"],
+      events: [
+        { seq: 1, eventType: "ROW_FETCH", activity_scope: "USER_DATA", details: { table: "student", row_number: 1, primary_key_value: "10", values: { id: "10", name: "AAA" } } },
+        { seq: 2, eventType: "ROW_FETCH", activity_scope: "USER_DATA", details: { table: "student", row_number: 2, primary_key_value: "50", values: { id: "50", name: "BBB" } } },
+        { seq: 3, eventType: "TABLE_SCAN_END", details: { table: "student", rows_examined: 2, rows_selected: 2, rows_discarded: 0 } },
+        { seq: 4, eventType: "COMMAND_END", details: { error: 0 } }
+      ]
+    };
+
+    const model = buildVisualizationModel(trace);
+    const finalStep = model.steps[model.steps.length - 1];
+    const observedKeys = Object.keys(finalStep.rowStates);
+
+    assert.strictEqual(observedKeys.length, 2);
+    assert.deepStrictEqual(observedKeys, ['10', '50']);
+    assert.strictEqual(finalStep.rowStates['10'].name, "AAA");
+    assert.strictEqual(finalStep.rowStates['50'].name, "BBB");
+
+    assert.strictEqual(finalStep.rowStates['1'], undefined);
+    assert.strictEqual(finalStep.rowStates['2'], undefined);
+    assert.strictEqual(finalStep.rowStates['3'], undefined);
+    assert.strictEqual(finalStep.rowStates['4'], undefined);
+    assert.strictEqual(finalStep.rowStates['5'], undefined);
+  });
+
+  // ---------------------------------------------------------
+  // TEST 3: FILTER_RESULT passed=false produces DISCARDED
+  // ---------------------------------------------------------
+  test("TEST 3: FILTER_RESULT passed=false produces DISCARDED", () => {
+    const trace = {
+      sql: "SELECT * FROM student WHERE name = 'Bob';",
+      commandType: "SELECT",
+      tables: ["student"],
+      events: [
+        { seq: 1, eventType: "TABLE_SCAN_START", details: { table: "student", iterator: "TableScanIterator", access_path: "Full Table Scan" } },
+        { seq: 2, eventType: "ROW_FETCH", activity_scope: "USER_DATA", details: { table: "student", row_number: 1, primary_key_value: "1", values: { id: "1", name: "Alice" } } },
+        { seq: 3, eventType: "FILTER_RESULT", activity_scope: "USER_DATA", details: { row_number: 1, condition: "(student.name = 'Bob')", passed: false } },
+        { seq: 4, eventType: "ROW_FETCH", activity_scope: "USER_DATA", details: { table: "student", row_number: 2, primary_key_value: "2", values: { id: "2", name: "Bob" } } },
+        { seq: 5, eventType: "FILTER_RESULT", activity_scope: "USER_DATA", details: { row_number: 2, condition: "(student.name = 'Bob')", passed: true } },
+        { seq: 6, eventType: "ROW_SELECTED", activity_scope: "USER_DATA", details: { row_number: 2 } },
+        { seq: 7, eventType: "RESULT_SENT", activity_scope: "USER_DATA", details: { result_row_seq: 1, values: ["2", "Bob"] } },
+        { seq: 8, eventType: "TABLE_SCAN_END", details: { table: "student", rows_examined: 2, rows_selected: 1, rows_discarded: 1 } },
+        { seq: 9, eventType: "COMMAND_END", details: { error: 0 } }
+      ]
+    };
+
+    const model = buildVisualizationModel(trace);
+    const finalStep = model.steps[model.steps.length - 1];
+    assert.strictEqual(finalStep.counters.examined, 2);
+    assert.strictEqual(finalStep.counters.selected, 1);
+    assert.strictEqual(finalStep.counters.discarded, 1);
+
+    assert.strictEqual(finalStep.rowStates['1'].status, 'DISCARDED');
+    assert.strictEqual(finalStep.rowStates['2'].status, 'SELECTED');
+  });
+
+  // ---------------------------------------------------------
+  // TEST 5: Snapshot + Telemetry Overlay (SELECTED, DISCARDED, NOT VISITED)
+  // ---------------------------------------------------------
+  test("TEST 5: Snapshot + Telemetry Overlay (1 SELECTED, 1 DISCARDED, 1 NOT VISITED)", () => {
+    const tableSnapshot = {
+      schema: "student",
+      table: "student",
+      columns: ["id", "name"],
+      rows: [
+        { id: 1, name: "A" },
+        { id: 2, name: "B" },
+        { id: 3, name: "C" }
+      ]
+    };
+
+    const trace = {
+      sql: "SELECT * FROM student WHERE id = 1;",
+      commandType: "SELECT",
+      tables: ["student"],
+      events: [
+        { seq: 1, eventType: "COMMAND_START", details: { query: "SELECT * FROM student WHERE id = 1;" } },
+        { seq: 2, eventType: "ROW_FETCH", activity_scope: "USER_DATA", details: { table: "student", row_number: 1, primary_key_value: "1", values: { id: "1", name: "A" } } },
+        { seq: 3, eventType: "FILTER_RESULT", activity_scope: "USER_DATA", details: { row_number: 1, condition: "(student.id = 1)", passed: true } },
+        { seq: 4, eventType: "ROW_SELECTED", activity_scope: "USER_DATA", details: { row_number: 1 } },
+        { seq: 5, eventType: "RESULT_SENT", activity_scope: "USER_DATA", details: { result_row_seq: 1, values: ["1", "A"] } },
+        { seq: 6, eventType: "ROW_FETCH", activity_scope: "USER_DATA", details: { table: "student", row_number: 2, primary_key_value: "2", values: { id: "2", name: "B" } } },
+        { seq: 7, eventType: "FILTER_RESULT", activity_scope: "USER_DATA", details: { row_number: 2, condition: "(student.id = 1)", passed: false } },
+        { seq: 8, eventType: "TABLE_SCAN_END", details: { table: "student", rows_examined: 2, rows_selected: 1, rows_discarded: 1 } },
+        { seq: 9, eventType: "COMMAND_END", details: { error: 0 } }
+      ]
+    };
+
+    const model = buildVisualizationModel(trace, tableSnapshot);
+    assert.ok(model);
+
+    // Initial step (0) check
+    const step0 = model.steps[0];
+    assert.strictEqual(step0.rowStates['1'].status, 'NOT VISITED');
+    assert.strictEqual(step0.rowStates['2'].status, 'NOT VISITED');
+    assert.strictEqual(step0.rowStates['3'].status, 'NOT VISITED');
+
+    // Final step check
+    const finalStep = model.steps[model.steps.length - 1];
+    assert.strictEqual(finalStep.rowStates['1'].status, 'SELECTED');
+    assert.strictEqual(finalStep.rowStates['2'].status, 'DISCARDED');
+    assert.strictEqual(finalStep.rowStates['3'].status, 'NOT VISITED');
+
+    assert.strictEqual(finalStep.counters.examined, 2);
+    assert.strictEqual(finalStep.counters.selected, 1);
+    assert.strictEqual(finalStep.counters.discarded, 1);
+
+    assert.strictEqual(finalStep.resultStream.length, 1);
+    assert.strictEqual(finalStep.resultStream[0].id, '1');
+    assert.strictEqual(finalStep.resultStream[0].name, 'A');
+  });
+
+  console.log(`==========================================================`);
+  console.log(` SUMMARY: ${passed} / ${total} MODEL TESTS PASSED CLEANLY`);
+  console.log(`==========================================================`);
+}
+
+runModelTests();

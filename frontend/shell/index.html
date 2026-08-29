@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StackStepper — Unified C++ & SQL Visualizer</title>
+  <link rel="stylesheet" href="/shell/styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="app-shell" class="shell-container">
+    
+    <!-- Left Sliding Navigation Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      
+      <!-- Brand / Header Section -->
+      <div class="sidebar-header">
+        <div class="brand-logo">
+          <span class="logo-icon">⚡</span>
+          <span class="brand-text">StackStepper</span>
+          <span class="brand-short">SS</span>
+        </div>
+        <button id="sidebar-toggle" class="sidebar-toggle-btn" title="Toggle Sidebar (Ctrl+B)" aria-label="Toggle Sidebar">
+          <span class="toggle-icon">❮</span>
+        </button>
+      </div>
+
+      <!-- Navigation Section -->
+      <nav class="sidebar-nav">
+        <div class="nav-section-title">LABS</div>
+        
+        <button id="nav-item-cpp" class="nav-item active" data-lab="cpp" title="C++ Memory Lab">
+          <span class="nav-icon">🧠</span>
+          <div class="nav-details">
+            <span class="nav-label">C++ Memory Lab</span>
+            <span class="nav-subtext">GDB & ML Stepper</span>
+          </div>
+          <span class="active-indicator"></span>
+        </button>
+
+        <button id="nav-item-sql" class="nav-item" data-lab="sql" title="SQL Engine Lab">
+          <span class="nav-icon">🗄️</span>
+          <div class="nav-details">
+            <span class="nav-label">SQL Engine Lab</span>
+            <span class="nav-subtext">MySQL & QueryTracer</span>
+          </div>
+          <span class="active-indicator"></span>
+        </button>
+
+        <div class="nav-section-title">THEME & APPEARANCE</div>
+
+        <!-- Light / Dark Mode Toggle -->
+        <div class="theme-mode-toggle" title="Switch Light/Dark Mode">
+          <button id="btn-theme-dark" class="mode-btn active" data-mode="dark">
+            <span>🌙</span> <span class="mode-text">Dark</span>
+          </button>
+          <button id="btn-theme-light" class="mode-btn" data-mode="light">
+            <span>☀️</span> <span class="mode-text">Light</span>
+          </button>
+        </div>
+
+        <!-- Color Scheme Selector -->
+        <div class="theme-scheme-selector">
+          <label class="scheme-label" for="select-color-scheme">Accent Palette:</label>
+          <select id="select-color-scheme" class="scheme-select">
+            <option value="default">🩵 Default</option>
+            <option value="github">🐙 GitHub</option>
+            <option value="vscode">💙 VS Code</option>
+            <option value="stackstepper">📜 Current StackStepper Theme</option>
+            <option value="emerald">🌿 Emerald</option>
+            <option value="indigo">🍇 Indigo</option>
+          </select>
+        </div>
+      </nav>
+
+      <!-- System Health Monitor Section -->
+      <div class="sidebar-footer">
+        <div class="footer-title">SYSTEM HEALTH</div>
+        <div class="health-indicators">
+          <div class="health-item" id="health-cpp" title="C++ Execution Backend (:3000)">
+            <span class="health-dot status-unknown"></span>
+            <span class="health-label">C++ Stepper (:3000)</span>
+          </div>
+          <div class="health-item" id="health-sql" title="SQL Gateway Backend (:18080)">
+            <span class="health-dot status-unknown"></span>
+            <span class="health-label">SQL Gateway (:18080)</span>
+          </div>
+          <div class="health-item" id="health-mysql" title="Custom MySQL Server (:3307)">
+            <span class="health-dot status-unknown"></span>
+            <span class="health-label">MySQL Engine (:3307)</span>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- Mobile Drawer Overlay Backdrop -->
+    <div id="drawer-backdrop" class="drawer-backdrop"></div>
+
+    <!-- Main Viewport Container -->
+    <main class="main-viewport">
+      
+      <!-- Top Mobile Navigation Bar -->
+      <header class="mobile-header">
+        <button id="mobile-hamburger" class="hamburger-btn" aria-label="Open Navigation">
+          <span>☰</span>
+        </button>
+        <span class="mobile-title">StackStepper</span>
+      </header>
+
+      <!-- C++ Memory Lab View Container -->
+      <div id="container-cpp" class="lab-container active">
+        <iframe id="iframe-cpp" src="/cpp/index.html" title="C++ Memory Lab" class="lab-iframe"></iframe>
+        
+        <div id="offline-overlay-cpp" class="offline-overlay hidden">
+          <div class="overlay-card">
+            <div class="overlay-icon">⚠️</div>
+            <h2>C++ Stepper Unavailable</h2>
+            <p>Could not connect to C++ backend at <code>http://localhost:3000</code>.</p>
+            <p class="overlay-sub">Please verify that <strong>Start-StackStepper.bat</strong> is running.</p>
+            <button class="retry-btn" onclick="StackStepperShell.checkHealth()">Retry Connection</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SQL Engine Lab View Container -->
+      <div id="container-sql" class="lab-container">
+        <iframe id="iframe-sql" src="/sql/index.html" title="SQL Engine Lab" class="lab-iframe"></iframe>
+        
+        <div id="offline-overlay-sql" class="offline-overlay hidden">
+          <div class="overlay-card">
+            <div class="overlay-icon">⚠️</div>
+            <h2>SQL Engine Gateway Unavailable</h2>
+            <p>Could not connect to SQL Gateway at <code>http://localhost:18080</code>.</p>
+            <p class="overlay-sub">Please verify that <strong>Start-StackStepper.bat</strong> is running.</p>
+            <button class="retry-btn" onclick="StackStepperShell.checkHealth()">Retry Connection</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="/shell/app.js"></script>
+</body>
+</html>

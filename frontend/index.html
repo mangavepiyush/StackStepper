@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MySQL Engine Visual Lab — Table & Row Processing Engine</title>
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    (function() {
+      function applySavedTheme() {
+        try {
+          const mode = localStorage.getItem('stackstepper_mode') || 'dark';
+          let scheme = localStorage.getItem('stackstepper_color_scheme') || 'default';
+          if (scheme === 'default-dark' || scheme === 'default-light') scheme = 'default';
+          if (scheme === 'github-dark' || scheme === 'github-light') scheme = 'github';
+          if (scheme === 'vscode-dark') scheme = 'vscode';
+          if (scheme === 'stackstepper-classic') scheme = 'stackstepper';
+          document.documentElement.setAttribute('data-theme', mode);
+          document.documentElement.setAttribute('data-color-scheme', scheme);
+        } catch (e) {}
+      }
+      applySavedTheme();
+      window.addEventListener('message', function(event) {
+        if (event.data && event.data.type === 'STACKSTEPPER_THEME_CHANGE') {
+          document.documentElement.setAttribute('data-theme', event.data.mode);
+          document.documentElement.setAttribute('data-color-scheme', event.data.scheme);
+        }
+      });
+    })();
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout" id="appLayout">
+    
+    <!-- LEFT SIDEBAR: QUERY HISTORY -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <span class="brand-icon">🔬</span>
+          <span class="brand-name">MySQL Engine Lab</span>
+        </div>
+        <div class="connection-status" id="connectionBadge">
+          <span class="status-dot"></span>
+          <span id="statusText">Gateway Connected</span>
+        </div>
+      </div>
+
+      <div class="sidebar-controls">
+        <label class="toggle-label">
+          <input type="checkbox" id="chkShowInternal">
+          <span>Show MySQL internal activity</span>
+        </label>
+        <input type="text" id="txtSearchHistory" class="search-input" placeholder="Filter queries...">
+      </div>
+
+      <div class="sidebar-history" id="queryHistoryList">
+        <div class="empty-state">Loading query history...</div>
+      </div>
+
+      <button id="btnLoadMoreQueries" class="btn btn-secondary btn-full hidden">Load More Queries</button>
+    </aside>
+
+    <!-- MAIN AREA: SPATIAL ENGINE MAP & VISUALIZATIONS -->
+    <main class="main-content">
+      
+      <!-- TOP SECTION: QUERY RUNNER -->
+      <section class="query-runner-card">
+        <div class="runner-header">
+          <label class="runner-title">Execute SQL Statement</label>
+          <div class="preset-group">
+            <select id="presetSelect" class="preset-select">
+              <option value="">-- Load Preset Scenario --</option>
+              <option value="SELECT * FROM student WHERE id < 3;">SELECT Range (id < 3)</option>
+              <option value="SELECT * FROM student WHERE id = 2;">SELECT by Primary Key (id = 2)</option>
+              <option value="UPDATE student SET name = 'ROW_VISUALIZATION_TEST' WHERE id = 2;">UPDATE Record (id = 2)</option>
+              <option value="INSERT INTO student (id, name) VALUES (99, 'Dave');">INSERT New Student</option>
+              <option value="DELETE FROM student WHERE id = 99;">DELETE Record (id = 99)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="runner-input-row">
+          <textarea id="sqlInput" class="sql-textarea" rows="2" placeholder="Enter SQL query (e.g. SELECT * FROM student WHERE id < 3;)"></textarea>
+          <button id="btnExecute" class="btn btn-primary">⚡ Execute Query</button>
+        </div>
+      </section>
+
+      <!-- SELECTED QUERY HEADER & METRICS -->
+      <section class="selected-query-card" id="selectedQueryCard">
+        <div class="sq-header">
+          <div class="sq-sql" id="sqSql">Select a query from the history or execute a new query to start visualization</div>
+          <div class="sq-metrics">
+            <span class="sq-badge" id="sqBadgeThread">Thread: -</span>
+            <span class="sq-badge" id="sqBadgeQuery">Query: -</span>
+            <span class="sq-badge cyan" id="sqBadgeCmd">-</span>
+            <span class="sq-badge amber" id="sqBadgeDuration">0 µs</span>
+            <span class="sq-badge green" id="sqBadgeExamined">Examined: 0</span>
+          </div>
+        </div>
+
+        <!-- PLAYBACK & CONTROLS TOOLBAR -->
+        <div class="playback-toolbar">
+          <div class="playback-buttons">
+            <button id="btnReset" class="btn btn-icon" title="Reset (Step 0)">⏮</button>
+            <button id="btnPrev" class="btn btn-icon" title="Previous Step">‹</button>
+            <button id="btnPlay" class="btn btn-primary-small">▶ Play</button>
+            <button id="btnNext" class="btn btn-icon" title="Next Step">›</button>
+          </div>
+
+          <div class="speed-selector">
+            <span class="speed-label">Speed:</span>
+            <button class="speed-btn" data-speed="800">0.5x</button>
+            <button class="speed-btn active" data-speed="350">1x</button>
+            <button class="speed-btn" data-speed="150">2x</button>
+          </div>
+
+          <div class="playback-progress">
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="progressFill" style="width: 0%;"></div>
+            </div>
+            <span class="step-info" id="stepInfo">Ready</span>
+          </div>
+
+          <button id="btnToggleInspector" class="btn btn-icon" title="Toggle Inspector Panel">📐 Inspector</button>
+        </div>
+      </section>
+
+      <!-- SUB-TABS NAVIGATION -->
+      <nav class="sub-tabs-bar">
+        <button class="tab-btn active" data-tab="tableRows">Table / Rows</button>
+        <button class="tab-btn" data-tab="overview">Engine Map</button>
+        <button class="tab-btn" data-tab="timeline">Timeline</button>
+        <button class="tab-btn" data-tab="executionPlan">Execution Plan</button>
+        <button class="tab-btn" data-tab="storage">Storage & B+ Tree</button>
+        <button class="tab-btn" data-tab="concurrency">Concurrency & Locks</button>
+        <button class="tab-btn" data-tab="durability">Durability & WAL</button>
+        <button class="tab-btn" data-tab="result">Result</button>
+      </nav>
+
+      <!-- SUB-TAB CONTENT PANELS -->
+      <div class="tab-view-container">
+        <!-- TABLE / ROWS VIEW: MAIN TABLE EXECUTION ENGINE -->
+        <div class="tab-panel active" id="panelTableRows">
+          <div class="empty-state">Select a query to launch the Table & Row Processing Engine.</div>
+        </div>
+
+        <!-- OVERVIEW VIEW: SPATIAL 2D ENGINE MAP -->
+        <div class="tab-panel" id="panelOverview">
+          <div class="empty-state">Select a query to launch the Engine Map.</div>
+        </div>
+
+        <!-- TIMELINE VIEW -->
+        <div class="tab-panel" id="panelTimeline">
+          <div class="empty-state">Select a query to view event timeline.</div>
+        </div>
+
+        <!-- EXECUTION PLAN VIEW -->
+        <div class="tab-panel" id="panelExecutionPlan">
+          <div class="empty-state">Select a query to view execution plan.</div>
+        </div>
+
+        <!-- STORAGE VIEW -->
+        <div class="tab-panel" id="panelStorage">
+          <div class="empty-state">Select a query to view storage access.</div>
+        </div>
+
+        <!-- CONCURRENCY VIEW -->
+        <div class="tab-panel" id="panelConcurrency">
+          <div class="empty-state">Select a query to view locks and MVCC.</div>
+        </div>
+
+        <!-- DURABILITY VIEW -->
+        <div class="tab-panel" id="panelDurability">
+          <div class="empty-state">Select a query to view redo log & WAL.</div>
+        </div>
+
+        <!-- RESULT VIEW -->
+        <div class="tab-panel" id="panelResult">
+          <div class="empty-state">Select a query to view execution result.</div>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT PANEL: NODE INSPECTOR & EDUCATIONAL EXPLANATION -->
+    <aside class="inspector-panel" id="inspectorPanel">
+      <div class="inspector-header">
+        <span class="inspector-title" id="inspTitle">Event Inspector</span>
+        <span class="inspector-badge" id="inspSeq">#0</span>
+      </div>
+
+      <div class="inspector-section">
+        <label class="insp-label">STAGE / EVENT TYPE</label>
+        <div class="insp-val highlight-cyan" id="inspEventType">Select a row or step to inspect</div>
+      </div>
+
+      <div class="inspector-section">
+        <label class="insp-label">ELAPSED TIME</label>
+        <div class="insp-val highlight-amber" id="inspElapsedTime">0 µs</div>
+      </div>
+
+      <div class="inspector-section">
+        <label class="insp-label">STUDENT EXPLANATION</label>
+        <div class="student-explanation" id="inspStudentExplanation">
+          Select an execution step to view educational details about what MySQL's storage engine performed.
+        </div>
+      </div>
+
+      <div class="inspector-section">
+        <details class="raw-event-details" id="rawJsonDetails">
+          <summary class="insp-label clickable">Show raw telemetry JSON</summary>
+          <pre class="raw-json" id="inspRawJson">{}</pre>
+        </details>
+      </div>
+    </aside>
+
+  </div>
+
+  <script src="visualization_model.js"></script>
+  <script src="visualization.js"></script>
+  <script src="playback.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

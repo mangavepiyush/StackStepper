@@ -1,0 +1,22 @@
+{
+  "name": "stackstepper-portable",
+  "version": "1.0.0",
+  "description": "StackStepper Portable SQL Engine & Visualizer",
+  "main": "backend/index.js",
+  "scripts": {
+    "start": "start.bat",
+    "setup": "setup.bat"
+  },
+  "dependencies": {
+    "mysql2": "^3.11.0",
+    "ws": "^8.18.0"
+  },
+  "keywords": [
+    "mysql",
+    "sql-engine",
+    "query-tracer",
+    "visualizer"
+  ],
+  "author": "Piyush",
+  "license": "MIT"
+}
