@@ -56,8 +56,8 @@ class GdbController {
     await this.execute("set print pretty on");
     await this.execute("set print array on");
     await this.execute("set max-value-size unlimited");
-    await this.execute(`file ${normalizeForGdb(this.executablePath)}`);
-    await this.execute(`source ${normalizeForGdb(path.join(this.runtimeDir, "viz_gdb.py"))}`);
+    await this.execute(`file "${normalizeForGdb(this.executablePath)}"`);
+    await this.execute(`python gdb.execute(r"""source ${normalizeForGdb(path.join(this.runtimeDir, "viz_gdb.py"))}""")`);
     await this.execute("skip file allocation_tracker.cpp");
     await this.execute("skip -rfu ^std::.*");
     await this.execute("skip -rfu ^__gnu_cxx::.*");
