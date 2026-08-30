@@ -826,7 +826,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Static File Serving
-  let filePath = path.join(FRONTEND_DIR, req.url === '/' ? 'index.html' : req.url);
+  let reqPath = req.url.split('?')[0];
+  if (reqPath === '/' || reqPath === '/shell' || reqPath === '/shell/') {
+    reqPath = '/shell/index.html';
+  } else if (reqPath === '/sql' || reqPath === '/sql/') {
+    reqPath = '/sql/index.html';
+  } else if (reqPath === '/cpp' || reqPath === '/cpp/') {
+    reqPath = '/cpp/index.html';
+  }
+  let filePath = path.join(FRONTEND_DIR, reqPath);
   const extname = path.extname(filePath);
   let contentType = 'text/html';
 

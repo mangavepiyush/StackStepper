@@ -7,7 +7,7 @@ try {
 } catch(e) {}
 
 try {
-  execSync('powershell -NoProfile -Command "Get-WmiObject Win32_Process | Where-Object {$_.Name -eq 'node.exe' -and ($_.CommandLine -like '*backend*index.js*' -or $_.CommandLine -like '*backend*cpp*index.js*')} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"', { stdio: 'ignore' });
+  execSync('powershell -NoProfile -Command "$ports = @(3307, 18080, 3000); foreach ($p in $ports) { $conns = Get-NetTCPConnection -LocalPort $p -ErrorAction SilentlyContinue; foreach ($c in $conns) { if ($c.OwningProcess -and $c.OwningProcess -gt 0) { Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue } } }"', { stdio: 'ignore' });
 } catch(e) {}
 
-console.log('All StackStepper Portable services stopped.');
+console.log('All StackStepper Portable services stopped cleanly.');

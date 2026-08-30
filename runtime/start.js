@@ -73,14 +73,15 @@ async function run() {
     console.log('[✓] C++ Memory Stepper Backend started on port 3000.');
   }
 
-  console.log('Opening visualization UI in web browser...');
-  try { execSync('start http://localhost:18080', { shell: true }); } catch(e) {}
+  console.log('Opening StackStepper Unified Application in web browser...');
+  try { execSync('start http://localhost:3000', { shell: true }); } catch(e) {}
 
   console.log('===================================================');
-  console.log(' StackStepper Portable Unified Distribution is Running!');
-  console.log(' - SQL Engine Visualizer : http://localhost:18080');
-  console.log(' - C++ Memory Stepper    : http://localhost:3000');
-  console.log(' Run stop.bat to shut down all services.');
+  console.log(' StackStepper Portable Unified Application is Running!');
+  console.log(' - Main Web Shell        : http://localhost:3000');
+  console.log('   ├── 🧠 C++ Memory Lab (GDB & ML Stepper)');
+  console.log('   └── 🗄️ SQL Engine Lab (MySQL & QueryTracer)');
+  console.log(' Run Stop-StackStepper.bat to shut down all services.');
   console.log('===================================================');
 }
 
